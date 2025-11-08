@@ -1,8 +1,3 @@
-"""
-Auth0 Authentication utilities for FastAPI
-Handles JWT token verification and user authentication
-"""
-
 import os
 from typing import Optional
 from fastapi import Depends, HTTPException, status

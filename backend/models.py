@@ -1,21 +1,16 @@
-"""
-Pydantic models for request/response validation
-"""
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List, Literal
 from uuid import uuid4
 
 
 class GenerateQuestionsRequest(BaseModel):
     """Request model for question generation"""
-    pdf_text: str = Field(..., min_length=1, description="Extracted text from PDF")
-    num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
+    num_questions: int = Field(default=1, ge=1, le=50, description="Number of questions to generate")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "pdf_text": "This is sample text from a PDF about Python programming...",
-                "num_questions": 10
+                "num_questions": 1
             }
         }
 
@@ -26,7 +21,6 @@ class Question(BaseModel):
     type: Literal["short", "mcq", "index"]
     chapter: str
     question: str
-    options: Optional[List[str]] = None  # Only for MCQ type
     
     class Config:
         json_schema_extra = {
@@ -35,7 +29,6 @@ class Question(BaseModel):
                 "type": "mcq",
                 "chapter": "Introduction to Python",
                 "question": "What is Python primarily used for?",
-                "options": ["Web Development", "Game Development", "Data Science", "All of the above"]
             }
         }
 
@@ -45,7 +38,6 @@ class GenerateQuestionsResponse(BaseModel):
     message: str
     num_questions: int
     questions: List[Question]
-    session_id: str
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -75,3 +67,29 @@ class QuestionsListResponse(BaseModel):
     message: str
     total_questions: int
     questions: List[Question]
+
+
+class LoginRequest(BaseModel):
+    """Request model for user login"""
+    username: str = Field(..., min_length=3, description="Username")
+    password: str = Field(..., min_length=6, description="Password")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "username": "student123",
+                "password": "password123"
+            }
+        }
+
+
+class LoginResponse(BaseModel):
+    """Response model for login"""
+    message: str
+    username: str
+    session_id: str
+
+
+class LogoutResponse(BaseModel):
+    """Response model for logout"""
+    message: str

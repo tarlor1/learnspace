@@ -2,71 +2,57 @@ from fastapi import FastAPI, HTTPException, Response, Cookie, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, Optional
 from datetime import datetime
-from datetime import datetime
-import hashlib
-import secrets
 
 from models import (
     GenerateQuestionsRequest,
     GenerateQuestionsResponse,
     SubmitAnswerRequest,
-    SubmitAnswerResponse,
-    QuestionsListResponse
+    SubmitAnswerResponse
 )
 from utils import generate_questions_with_neuralseek, validate_answer_with_neuralseek
 from auth import get_current_user, get_optional_user
 
-
-# Initialize FastAPI app
 app = FastAPI(
     title="LearnSpace API",
     description="Backend API for PDF-based question generation with NeuralSeek integration",
     version="1.0.0",
 )
 
-# Configure CORS to allow requests from Next.js frontend
+# Enable CORS (for Next.js frontend during dev)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # Next.js default port
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://localhost:3002",
-        # Add your production frontend URL here when deploying
+        "*",  # dev only
     ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# Each key = session_token, value = dict of user data & questions
+data_store: Dict[str, Dict[str, Any]] = {}
 
-# In-memory data store
-# In production, replace with a proper database (PostgreSQL, MongoDB, etc.)
-data_store: Dict[str, Any] = {
-    "sessions": {},  # session_id -> {pdf_text, questions, answers}
-    "questions": [],  # Global list of all questions
-    "answers": [],  # Global list of all submitted answers
-}
+# Each key = username, value = hashed password
+user_store: Dict[str, str] = {}
+
+# Each key = session_token, value = user info
+active_sessions: Dict[str, Dict[str, Any]] = {}
 
 
 @app.get("/")
 async def root():
-    """
-    Root endpoint - API health check
-
-    Returns:
-        Basic API information and available endpoints
-    """
+    """Health check"""
     return {
         "message": "LearnSpace API is running",
         "version": "1.0.0",
         "status": "healthy",
         "endpoints": [
             "POST /generate-questions - Generate questions from PDF text",
-            "POST /submit-answer - Submit an answer to a question",
-            "GET /questions - Get all generated questions",
-            "GET /session/{session_id} - Get session data",
-            "DELETE /reset - Reset all data (dev only)",
+            "POST /submit-answer - Submit an answer to a question"
         ],
     }
 
@@ -119,8 +105,12 @@ async def submit_answer(
         questions = data_store.get(session_token, {}).get("questions", [])
         if request.question_id >= len(questions) or request.question_id < 0:
             raise HTTPException(status_code=404, detail="Question not found for this session")
-
-        question_text = questions[request.question_id]
+        
+        question_text = ""
+        for question in data_store[session_token]["questions"]:
+            if question["id"] == request.question_id:
+                question_text = question["text"]
+                break
 
         validation = await validate_answer_with_neuralseek(
             question_text=question_text,
@@ -139,5 +129,5 @@ async def submit_answer(
         raise HTTPException(status_code=500, detail=f"Error submitting answer: {str(e)}")
 
 # Run with: uvicorn main:app --reload
-# API docs available at: http://localhost:8000/docs
-# Alternative docs: http://localhost:8000/redoc
+# Docs: http://localhost:8000/docs
+# ------------------------------------------------------------

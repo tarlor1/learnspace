@@ -8,6 +8,58 @@ export interface Card {
   text?: string
 }
 
+export interface User {
+  id: string
+  name: string
+  email: string
+  joinDate: string
+  totalCardsCompleted: number
+}
+
+export interface Document {
+  id: string
+  title: string
+  uploadDate: string
+  chapters: {
+    name: string
+    completed: boolean
+    totalCards: number
+    completedCards: number
+  }[]
+}
+
+export const mockUser: User = {
+  id: "user-1",
+  name: "Alex Johnson",
+  email: "alex.johnson@email.com",
+  joinDate: "January 15, 2024",
+  totalCardsCompleted: 42,
+}
+
+export const mockDocuments: Document[] = [
+  {
+    id: "doc-1",
+    title: "Biology Fundamentals",
+    uploadDate: "March 10, 2024",
+    chapters: [
+      { name: "Chapter 1: Cell Biology", completed: true, totalCards: 12, completedCards: 12 },
+      { name: "Chapter 2: Photosynthesis", completed: true, totalCards: 8, completedCards: 8 },
+      { name: "Chapter 3: Genetics", completed: false, totalCards: 10, completedCards: 5 },
+      { name: "Chapter 4: Evolution", completed: false, totalCards: 9, completedCards: 2 },
+      { name: "Chapter 5: Ecology", completed: false, totalCards: 7, completedCards: 0 },
+    ],
+  },
+  {
+    id: "doc-2",
+    title: "Chemistry Basics",
+    uploadDate: "February 28, 2024",
+    chapters: [
+      { name: "Chapter 1: Atoms and Molecules", completed: true, totalCards: 15, completedCards: 15 },
+      { name: "Chapter 2: Chemical Bonds", completed: false, totalCards: 11, completedCards: 6 },
+    ],
+  },
+]
+
 export const mockCards: Card[] = [
   {
     id: "1",

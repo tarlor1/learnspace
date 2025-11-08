@@ -180,9 +180,7 @@ db.commit()
 
 1. Install dependencies:
 ```bash
-pip install sqlalchemy psycopg2-binary alembic supabase
-```
-
+pip install -r requirements.txt
 2. Set DATABASE_URL in `.env.local`:
 ```bash
 DATABASE_URL=postgresql://user:password@host:port/database

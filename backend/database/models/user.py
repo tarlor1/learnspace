@@ -2,7 +2,7 @@
 UserProfile model - Links to Auth0 users
 """
 
-from sqlalchemy import Column, String, Text, TIMESTAMP
+from sqlalchemy import Column, Text, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.connection import Base

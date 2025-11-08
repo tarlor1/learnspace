@@ -27,7 +27,7 @@ class Question(Base):
     chapter_id = Column(
         UUID(as_uuid=True),
         ForeignKey("chapters.id", ondelete="SET NULL"),
-        nullable=True,
+        nullable=False,
     )
     content = Column(
         JSONB, nullable=False

@@ -72,7 +72,7 @@ def verify_token(token: str) -> dict:
         raise AuthError(
             {"code": "token_expired", "description": "Token has expired"}, 401
         )
-    except jwt.JWTClaimsError:
+    except (jwt.InvalidAudienceError, jwt.InvalidIssuerError):
         raise AuthError(
             {
                 "code": "invalid_claims",

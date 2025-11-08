@@ -39,11 +39,11 @@ class UserAnswer(Base):
     user_answer = Column(Text, nullable=False)
     was_correct = Column(Boolean, nullable=False)
     answer_score = Column(
-        Numeric(5, 2)
+        Numeric(5, 2), nullable=False
     )  # 0.00 to 100.00 - quality score for the answer
-    question_rating = Column(
-        Integer
-    )  # 1-5 stars - user's rating of the question quality
+    isGoodQuestion = Column(
+        Boolean
+    )  # True if user found the question good, False otherwise
     answered_at = Column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -52,10 +52,6 @@ class UserAnswer(Base):
     __table_args__ = (
         CheckConstraint(
             "answer_score >= 0 AND answer_score <= 100", name="check_answer_score_range"
-        ),
-        CheckConstraint(
-            "question_rating >= 1 AND question_rating <= 5",
-            name="check_question_rating_range",
         ),
     )
 

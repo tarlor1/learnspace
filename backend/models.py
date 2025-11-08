@@ -8,14 +8,14 @@ from uuid import uuid4
 
 class GenerateQuestionsRequest(BaseModel):
     """Request model for question generation"""
-    pdf_text: str = Field(..., min_length=1, description="Extracted text from PDF")
-    num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
+    pdf_text: Optional[str] = Field(default="", description="Extracted text from PDF (optional)")
+    num_questions: int = Field(default=1, ge=1, le=50, description="Number of questions to generate")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "pdf_text": "This is sample text from a PDF about Python programming...",
-                "num_questions": 10
+                "num_questions": 1
             }
         }
 

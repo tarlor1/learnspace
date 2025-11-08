@@ -7,7 +7,7 @@ from jwt import PyJWKClient
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv(".env.local")
+load_dotenv(".env")
 
 # Auth0 configuration
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")

@@ -29,3 +29,13 @@ starlette==0.49.3
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.38.0
+
+# Additional dependencies for LearnSpace
+httpx==0.27.0
+python-dotenv==1.0.1
+
+# Auth0 authentication
+PyJWT==2.8.0
+cryptography==41.0.7
+python-jose[cryptography]==3.3.0
+

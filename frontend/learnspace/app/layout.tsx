@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
+import { Auth0Provider } from "@auth0/nextjs-auth0/client";
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -37,9 +38,11 @@ export default function RootLayout({
 	return (
 		<html lang="en">
 			<body className={`font-sans antialiased bg-background min-h-screen`}>
-				<Navbar />
-				<div className="pt-20 pb-20">{children}</div>
-				<BottomNav />
+				<Auth0Provider>
+					<Navbar />
+					<div className="pt-20 pb-20">{children}</div>
+					<BottomNav />
+				</Auth0Provider>
 			</body>
 		</html>
 	);

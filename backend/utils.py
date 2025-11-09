@@ -18,8 +18,9 @@ if not all([NEURALSEEK_API_KEY, NEURALSEEK_EMBED_CODE, QUESTION_GENERATOR_AGENT,
 
 async def _fetch_one_question(client: httpx.AsyncClient, headers: Dict[str, str], topic: str) -> Question:
     """Call NeuralSeek once and map the response to our Question model."""
-    payload = {"agent": QUESTION_GENERATOR_AGENT, "topic": topic}
+    payload = {"agent": QUESTION_GENERATOR_AGENT, "params": [{"name": "chosenTopic", "value": topic}], "options": {"temperatureMod": 20, "maxTokens": 70}}
     response = await client.post(f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers)
+    print(response.json())
     response.raise_for_status()
     result = response.json()
 
@@ -31,6 +32,7 @@ async def generate_questions_with_neuralseek(topic: str, num_questions: int = 10
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
         "embedcode": NEURALSEEK_EMBED_CODE,
+        "apikey": NEURALSEEK_API_KEY,
     }
 
     async with httpx.AsyncClient(timeout=60) as client:

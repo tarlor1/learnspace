@@ -11,6 +11,7 @@ from models import (
 from auth import router as auth_router, get_current_user
 from routes.questions import router as questions_router
 from routes.upload import router as upload_router
+from routes.profile import router as profile_router
 from utils import validate_answer_with_neuralseek
 
 # In-memory store for user questions
@@ -50,6 +51,7 @@ async def root():
 app.include_router(auth_router)
 app.include_router(questions_router)
 app.include_router(upload_router)
+app.include_router(profile_router)
 
 
 @app.post("/generate-questions", response_model=GenerateQuestionsResponse)
@@ -157,9 +159,16 @@ async def submit_answer(
     request: SubmitAnswerRequest, current_user: dict = Depends(get_current_user)
 ):
     """Submit an answer and validate it (requires Auth0 authentication)"""
+    from database.connection import get_db
+    from database.models.user_answer import UserAnswer
+    from database.models.user import UserProfile
+    from uuid import UUID
+
     user_id = current_user.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+
+    db = next(get_db())
 
     try:
         question_obj = (
@@ -178,6 +187,29 @@ async def submit_answer(
             topic=request.topic, question_text=question_text, user_answer=request.answer
         )
 
+        # Ensure user profile exists
+        user_profile = db.query(UserProfile).filter(UserProfile.id == user_id).first()
+        if not user_profile:
+            user_profile = UserProfile(id=user_id)
+            db.add(user_profile)
+            db.flush()
+
+        # Save answer to database
+        was_correct = validation.get("is_correct", False) if validation else False
+        answer_score = float(validation.get("score", 0.0)) if validation else 0.0
+
+        user_answer = UserAnswer(
+            user_id=user_id,
+            question_id=UUID(request.question_id),
+            user_answer=request.answer,
+            was_correct=was_correct,
+            answer_score=answer_score,
+            isGoodQuestion=None,  # Can be updated later via feedback
+        )
+
+        db.add(user_answer)
+        db.commit()
+
         return SubmitAnswerResponse(
             message="Answer submitted successfully",
             topic=request.topic,
@@ -187,7 +219,13 @@ async def submit_answer(
             timestamp=datetime.utcnow().isoformat(),
         )
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=500, detail=f"Error submitting answer: {str(e)}"
         )
+    finally:
+        db.close()

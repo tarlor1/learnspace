@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,16 +11,13 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS (for Next.js frontend during dev)
+# CORS configuration
+raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+allow_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "*",  # dev only
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,14 +31,10 @@ async def root():
         "message": "LearnSpace API is running",
         "version": "1.0.0",
         "status": "healthy",
+        "auth": "Auth0",
     }
 
 
 # Include routers
 app.include_router(auth_router)
 app.include_router(questions_router)
-
-
-# Run with: uvicorn main:app --reload
-# Docs: http://localhost:8000/docs
-# ------------------------------------------------------------

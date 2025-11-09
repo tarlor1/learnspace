@@ -76,10 +76,10 @@ async def generate_question(
             )
 
         logger.info(f"Found {len(relevant_chunks)} relevant chunks.")
-        
+
         # Extract chapter_id from the first chunk (all should have the same chapter)
         chapter_id = relevant_chunks[0].get("chapter_id") if relevant_chunks else None
-        
+
         context_text = "\n\n---\n\n".join([chunk["text"] for chunk in relevant_chunks])
 
         # --- 3. Call Real Question Generation Service ---
@@ -99,24 +99,24 @@ async def generate_question(
 
         # --- 4. Save Question to Database ---
         logger.info("Saving question to database...")
-        
+
         # Map NeuralSeek response to our Question model structure
         question_content = generated_question.get("content", {})
         topic = generated_question.get("topic", current_topic)
         correct_answer = generated_question.get("correct_answer", "")
-        
+
         new_question = Question(
             doc_id=document_id,
             chapter_id=chapter_id,
             content=question_content,  # This is the JSONB field
             correct_answer=correct_answer,
-            topic=topic
+            topic=topic,
         )
-        
+
         db.add(new_question)
         db.commit()
         db.refresh(new_question)
-        
+
         logger.info(f"✅ Question saved with ID: {new_question.id}")
 
         # --- 5. Return the question ---
@@ -128,7 +128,7 @@ async def generate_question(
             "topic": topic,
             "content": question_content,
             "correct_answer": correct_answer,
-            "created_at": new_question.created_at.isoformat()
+            "created_at": new_question.created_at.isoformat(),
         }
 
     except HTTPException as http_exc:

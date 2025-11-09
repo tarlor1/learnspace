@@ -1,12 +1,13 @@
 import os
 import httpx
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+import asyncio
 from dotenv import load_dotenv
 import logging
 
-# Load environment variables from .env.local
-load_dotenv(".env.local")
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,15 +16,19 @@ logger = logging.getLogger(__name__)
 # --- NeuralSeek API Configuration ---
 NEURALSEEK_API_URL = os.getenv("NEURALSEEK_API_URL")
 NEURALSEEK_API_KEY = os.getenv("NEURALSEEK_API_KEY")
-NEURALSEEK_INSTANCE_ID = os.getenv("NEURALSEEK_INSTANCE_ID")  # e.g., "stony15"
+NEURALSEEK_INSTANCE_ID = os.getenv("NEURALSEEK_INSTANCE_ID")
 
 # Agent Names
 MAKE_QUESTION_AGENT = os.getenv("MAKE_QUESTION_AGENT", "make_question")
+QUESTION_GENERATOR_AGENT = os.getenv(
+    "QUESTION_GENERATOR_AGENT", "question_generator_agent"
+)
+ANSWER_VALIDATOR_AGENT = os.getenv("ANSWER_VALIDATOR_AGENT", "answer_validator_agent")
 
 # Validate configuration
 if not all([NEURALSEEK_API_URL, NEURALSEEK_API_KEY, NEURALSEEK_INSTANCE_ID]):
     raise ValueError(
-        "NEURALSEEK_API_URL, NEURALSEEK_API_KEY, and NEURALSEEK_INSTANCE_ID must be set in .env.local"
+        "NEURALSEEK_API_URL, NEURALSEEK_API_KEY, and NEURALSEEK_INSTANCE_ID must be set in .env"
     )
 
 logger.info("✅ NeuralSeek Config Loaded")
@@ -162,4 +167,110 @@ async def generate_question_from_context(context: str) -> Dict[str, Any]:
         return {
             "error": "An unexpected error occurred.",
             "details": str(e),
+        }
+
+
+# --- OLD TOPIC-BASED NEURALSEEK FUNCTIONS (PRESERVED) ---
+async def _fetch_one_question(
+    client: httpx.AsyncClient, headers: Dict[str, str], topic: str
+):
+    """
+    Call NeuralSeek once and return a question object.
+    Uses the old topic-based approach.
+    """
+    from database.models.question import Question
+
+    payload = {"agent": QUESTION_GENERATOR_AGENT, "topic": topic}
+    response = await client.post(
+        f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers
+    )
+    response.raise_for_status()
+    result = response.json()
+
+    q_text = result.get("answer", "Could not generate a question.")
+    return Question(topic=topic, question=q_text)
+
+
+async def generate_questions_with_neuralseek(
+    topic: str, num_questions: int = 10
+) -> List:
+    """
+    Generate multiple questions for a given topic using NeuralSeek.
+    This is the old topic-based approach.
+
+    Args:
+        topic: The topic to generate questions about
+        num_questions: Number of questions to generate
+
+    Returns:
+        List of Question objects
+    """
+    # Get legacy config values
+    NEURALSEEK_EMBED_CODE = os.getenv("NEURALSEEK_EMBED_CODE")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
+        "embedcode": NEURALSEEK_EMBED_CODE or "",
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        tasks = [
+            _fetch_one_question(client, headers, topic)
+            for _ in range(max(1, num_questions))
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        from database.models.question import Question
+
+        questions = [res for res in results if isinstance(res, Question)]
+
+        return questions
+
+
+async def validate_answer_with_neuralseek(
+    topic: str, question_text: str, user_answer: str
+) -> Dict[str, Any]:
+    """
+    Validate a user's answer using NeuralSeek's answer validator agent.
+    This is the old topic-based approach.
+
+    Args:
+        topic: The topic of the question
+        question_text: The question text
+        user_answer: The user's submitted answer
+
+    Returns:
+        Dictionary with validation results (score, feedback, is_correct)
+    """
+    # Get legacy config values
+    NEURALSEEK_EMBED_CODE = os.getenv("NEURALSEEK_EMBED_CODE")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
+        "embedcode": NEURALSEEK_EMBED_CODE or "",
+    }
+
+    try:
+        parameters = {"topic": topic, "question": question_text, "answer": user_answer}
+        payload = {
+            "agent": ANSWER_VALIDATOR_AGENT,
+            "topic": topic,
+            "parameters": parameters,
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except Exception as e:
+        logger.error(f"Error validating answer with NeuralSeek: {e}")
+        return {
+            "score": 0.5,
+            "feedback": "Unable to automatically grade this answer.",
+            "is_correct": None,
         }

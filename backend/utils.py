@@ -106,7 +106,6 @@ async def call_maistro_agent(
     logger.info(f"   URL: {api_url}")
     logger.info(f"   Agent: {agent_name}")
     logger.info(f"   Params: {json.dumps(params, indent=2)}")
-    logger.info(f"   Full Payload: {json.dumps(payload, indent=2)}")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
@@ -114,7 +113,6 @@ async def call_maistro_agent(
             response.raise_for_status()
             result = response.json()
             logger.info("✅ NeuralSeek call successful.")
-            logger.info(f"   Full response: {json.dumps(result, indent=2)}")
             return result
 
         except httpx.HTTPStatusError as e:

@@ -28,8 +28,8 @@ NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # 384 dimensions, fast and efficient
-CHUNK_SIZE = 500  # characters per chunk
-CHUNK_OVERLAP = 50  # overlap between chunks
+CHUNK_SIZE = 2000  # characters per chunk (roughly 400-500 words, or 1-2 paragraphs)
+CHUNK_OVERLAP = 200  # overlap between chunks (10% overlap for context continuity)
 
 # Initialize clients
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -512,18 +512,8 @@ class DocumentUploadPipeline:
             else:
                 raise ValueError(f"Unexpected answer type: {type(answer)}")
 
-            # Check if we got an empty response
-            if not chapter_data or chapter_data == {}:
-                print(f"      ⚠️  NeuralSeek returned empty object - using fallback")
-                raise ValueError("Empty response from NeuralSeek")
-
-            title = chapter_data.get("title")
-            summary = chapter_data.get("summary")
-            
-            # If either is missing, raise error to trigger fallback
-            if not title or not summary:
-                print(f"      ⚠️  Missing title or summary in response - using fallback")
-                raise ValueError("Incomplete response from NeuralSeek")
+            title = chapter_data.get("title", "Section")
+            summary = chapter_data.get("summary", "")
 
             print(f"      ✅ Parsed title: '{title}'")
             print(f"      ✅ Parsed summary: '{summary[:100]}...'")
@@ -535,39 +525,27 @@ class DocumentUploadPipeline:
 
         except asyncio.TimeoutError:
             print(f"⚠️  Chapter summary generation timed out (30s) - using fallback")
-            # Fallback: Extract first sentence or phrase as title
-            return self._create_fallback_chapter_info(chapter_chunks)
+            # Fallback: Return generic title and first 200 chars of first chunk
+            return {
+                "title": "Section",
+                "summary": (
+                    chapter_chunks[0][:200] + "..."
+                    if chapter_chunks
+                    else "Section content"
+                ),
+            }
         except Exception as e:
             print(f"⚠️  Chapter summary generation failed: {e}")
-            # Fallback: Extract first sentence or phrase as title
-            return self._create_fallback_chapter_info(chapter_chunks)
 
-    def _create_fallback_chapter_info(self, chapter_chunks: List[str]) -> Dict[str, str]:
-        """
-        Create a fallback chapter title and summary from the content.
-        Extracts the first meaningful sentence/phrase as the title.
-        """
-        if not chapter_chunks:
-            return {"title": "Chapter", "summary": "Content"}
-        
-        first_chunk = chapter_chunks[0]
-        
-        # Try to extract first sentence as title (up to 100 chars)
-        sentences = first_chunk.replace('\n', ' ').split('. ')
-        title = sentences[0].strip() if sentences else "Chapter"
-        
-        # Clean up title
-        title = title[:100].strip()
-        if not title.endswith('.'):
-            title = title.rstrip(',;:')
-        
-        # Use first 300 chars as summary
-        summary = first_chunk[:300].strip() + "..."
-        
-        return {
-            "title": title,
-            "summary": summary
-        }
+            # Fallback: Return generic title and first 200 chars of first chunk
+            return {
+                "title": "Section",
+                "summary": (
+                    chapter_chunks[0][:200] + "..."
+                    if chapter_chunks
+                    else "Section content"
+                ),
+            }
 
     def _index_chunks_with_chapters(
         self,

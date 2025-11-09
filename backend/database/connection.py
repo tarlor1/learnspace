@@ -8,14 +8,14 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv("../.env.local")
+load_dotenv("../.env")
 
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL", "")
 
 if not SUPABASE_DB_URL:
-    raise ValueError("DATABASE_URL must be set in .env.local")
+    raise ValueError("DATABASE_URL must be set in .env")
 
 # Create SQLAlchemy engine
 engine = create_engine(

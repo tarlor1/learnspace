@@ -1,11 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from uuid import uuid4
 
 
 class GenerateQuestionsRequest(BaseModel):
     """Request model for question generation"""
-    topic: str = Field(..., min_length=1, description="Topic to generate questions for")
+    topic: Optional[str] = Field(None, min_length=1, description="Topic to generate questions for (optional - random if not provided)")
     num_questions: int = Field(default=1, ge=1, le=50, description="Number of questions to generate")
 
     class Config:

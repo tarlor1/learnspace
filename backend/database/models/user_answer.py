@@ -37,12 +37,14 @@ class UserAnswer(Base):
         nullable=False,
     )
     user_answer = Column(Text, nullable=False)
-    was_correct = Column(Boolean, nullable=False)
+    was_correct = Column(
+        Boolean, nullable=True
+    )  # Made nullable until validation is implemented
     answer_score = Column(
-        Numeric(5, 2), nullable=False
-    )  # 0.00 to 100.00 - quality score for the answer
+        Numeric(5, 2), nullable=True
+    )  # 0.00 to 100.00 - quality score for the answer (nullable until validation is implemented)
     isGoodQuestion = Column(
-        Boolean
+        Boolean, nullable=True
     )  # True if user found the question good, False otherwise
     answered_at = Column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

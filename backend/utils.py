@@ -430,9 +430,12 @@ async def generate_questions_from_user_documents(
                     # Call question_maker agent with the context and topic
                     question_data = await generate_question_from_context(context, topic=topic)
 
+                    # Randomly select a chunk to get metadata from
+                    random_chunk = random.choice(context_chunks)
+                    
                     # Add metadata about source
-                    question_data["document_id"] = context_chunks[0]["document_id"]
-                    question_data["chapter_id"] = context_chunks[0].get("chapter_id")
+                    question_data["document_id"] = random_chunk["document_id"]
+                    question_data["chapter_id"] = random_chunk.get("chapter_id")
                     question_data["source_chunks"] = [c["chunk_index"] for c in context_chunks]
                     question_data["topic"] = topic  # Store the generated topic
 
@@ -454,48 +457,67 @@ async def generate_questions_from_user_documents(
 
 
 async def validate_answer_with_neuralseek(
-    topic: str, question_text: str, user_answer: str
+    question: str, topic_data: str, user_answer: str
 ) -> Dict[str, Any]:
     """
     Validate a user's answer using NeuralSeek's answer validator agent.
-    This is the old topic-based approach.
 
     Args:
-        topic: The topic of the question
-        question_text: The question text
+        question: The question text that was asked
+        topic_data: The relevant textbook/reference data (correct answer) to check against
         user_answer: The user's submitted answer
 
     Returns:
         Dictionary with validation results (score, feedback, is_correct)
     """
-    # Get legacy config values
-    NEURALSEEK_EMBED_CODE = os.getenv("NEURALSEEK_EMBED_CODE")
-
+    # Use the same headers format as call_maistro_agent
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
-        "embedcode": NEURALSEEK_EMBED_CODE or "",
+        "apikey": NEURALSEEK_API_KEY,
     }
 
     try:
-        parameters = {"topic": topic, "question": question_text, "answer": user_answer}
+        # NeuralSeek expects these specific parameter names according to the agent prompt
+        params = {
+            "userAnswers": user_answer,  # User's submitted answer
+            "topic_data": topic_data,  # The relevant textbook/reference data (correct answer)
+            "question": question,  # The question text that was asked
+        }
         payload = {
             "agent": ANSWER_VALIDATOR_AGENT,
-            "topic": topic,
-            "parameters": parameters,
+            "params": params,  # Use 'params' not 'parameters'
         }
 
+        # Use correct endpoint with instance ID
+        api_url = f"{NEURALSEEK_API_URL.rstrip('/')}/{NEURALSEEK_INSTANCE_ID}/maistro"
+        
+        # Log the request details for debugging
+        logger.info("🤖 Calling NeuralSeek Answer Validator...")
+        logger.info(f"   URL: {api_url}")
+        logger.info(f"   Agent: {ANSWER_VALIDATOR_AGENT}")
+        logger.info(f"   Params: {json.dumps(params, indent=2)}")
+        
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
-                f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers
+                api_url, json=payload, headers=headers
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            
+            # Log the full response for debugging
+            logger.info(f"NeuralSeek validation response: {result}")
+            
+            # If NeuralSeek returns 'answer' field, use it as feedback
+            if isinstance(result, dict):
+                if "answer" in result and not result.get("feedback"):
+                    result["feedback"] = result["answer"]
+            
+            return result
 
     except Exception as e:
         logger.error(f"Error validating answer with NeuralSeek: {e}")
         return {
             "score": 0.5,
-            "feedback": "Unable to automatically grade this answer.",
+            "feedback": f"Unable to automatically grade this answer. Error: {str(e)}",
             "is_correct": None,
         }

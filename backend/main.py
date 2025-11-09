@@ -134,6 +134,7 @@ async def generate_questions(
                     "id": q_id,
                     "topic": topic,
                     "question": question_text,
+                    "correct_answer": q_data.get("correct_answer", ""),  # Store the correct answer
                     "document_id": q_data.get("document_id"),
                     "chapter_id": q_data.get("chapter_id"),
                 }
@@ -158,57 +159,32 @@ async def generate_questions(
 async def submit_answer(
     request: SubmitAnswerRequest, current_user: dict = Depends(get_current_user)
 ):
-    """Submit an answer and validate it (requires Auth0 authentication)"""
-    from database.connection import get_db
-    from database.models.user_answer import UserAnswer
-    from database.models.user import UserProfile
-    from uuid import UUID
-
+    """Submit an answer and validate it with NeuralSeek (requires Auth0 authentication)"""
     user_id = current_user.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
 
-    db = next(get_db())
-
     try:
+        # Try to get question from in-memory store, but don't fail if not found
         question_obj = (
             user_question_store.get(user_id, {})
             .get("questions", {})
             .get(request.question_id)
         )
-        if not question_obj:
-            raise HTTPException(
-                status_code=404, detail="Question not found for this user"
-            )
 
-        question_text = question_obj.get("question", "")
+        # Get the question text from the stored question data
+        question_text = question_obj.get("question", "") if question_obj else ""
+        
+        # If no question text available, use fallback
+        if not question_text:
+            question_text = f"Question about {request.topic}"
 
+        # Validate answer with NeuralSeek - just pass the question text as topic_data
         validation = await validate_answer_with_neuralseek(
-            topic=request.topic, question_text=question_text, user_answer=request.answer
+            question=question_text,
+            topic_data=question_text,  # Use question text as the reference data
+            user_answer=request.answer
         )
-
-        # Ensure user profile exists
-        user_profile = db.query(UserProfile).filter(UserProfile.id == user_id).first()
-        if not user_profile:
-            user_profile = UserProfile(id=user_id)
-            db.add(user_profile)
-            db.flush()
-
-        # Save answer to database
-        was_correct = validation.get("is_correct", False) if validation else False
-        answer_score = float(validation.get("score", 0.0)) if validation else 0.0
-
-        user_answer = UserAnswer(
-            user_id=user_id,
-            question_id=UUID(request.question_id),
-            user_answer=request.answer,
-            was_correct=was_correct,
-            answer_score=answer_score,
-            isGoodQuestion=None,  # Can be updated later via feedback
-        )
-
-        db.add(user_answer)
-        db.commit()
 
         return SubmitAnswerResponse(
             message="Answer submitted successfully",
@@ -220,12 +196,8 @@ async def submit_answer(
         )
 
     except HTTPException:
-        db.rollback()
         raise
     except Exception as e:
-        db.rollback()
         raise HTTPException(
             status_code=500, detail=f"Error submitting answer: {str(e)}"
         )
-    finally:
-        db.close()

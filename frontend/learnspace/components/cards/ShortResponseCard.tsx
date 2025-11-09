@@ -68,7 +68,13 @@ export default function ShortResponseCard({ id, topic, question }: ShortResponse
   const getDisplayText = () => {
     if (!validation) return ""
     // NeuralSeek might return feedback in 'answer' or 'feedback' field
-    return validation.feedback || validation.answer || "Answer submitted"
+    const feedback = validation.feedback || validation.answer || ""
+    
+    // If there's any other data in validation, show it
+    if (feedback) return feedback
+    
+    // Show the entire validation object as JSON if nothing else
+    return JSON.stringify(validation, null, 2)
   }
 
   return (

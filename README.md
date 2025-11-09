@@ -289,19 +289,6 @@ Built with shadcn/ui and Radix UI:
 - **CORS Protection**: Configured origins for API access
 - **Environment Variables**: Sensitive data stored in .env files
 
-## 🚧 Roadmap
-
-- [ ] Support for more document formats (DOCX, TXT, EPUB)
-- [ ] Spaced repetition algorithm
-- [ ] Progress tracking and analytics
-- [ ] Collaborative study sessions
-- [ ] Mobile app (React Native)
-- [ ] Export study materials
-- [ ] Custom question templates
-- [ ] Integration with LMS platforms
-
-## 📝 Development
-
 ### Project Structure
 
 ```

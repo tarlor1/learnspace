@@ -4,6 +4,7 @@ import json
 from typing import Dict, Any, Optional, List
 import asyncio
 from dotenv import load_dotenv
+from models import Question
 import logging
 
 # Load environment variables
@@ -170,20 +171,19 @@ async def generate_question_from_context(context: str) -> Dict[str, Any]:
         }
 
 
-# --- OLD TOPIC-BASED NEURALSEEK FUNCTIONS (PRESERVED) ---
 async def _fetch_one_question(
     client: httpx.AsyncClient, headers: Dict[str, str], topic: str
-):
-    """
-    Call NeuralSeek once and return a question object.
-    Uses the old topic-based approach.
-    """
-    from database.models.question import Question
-
-    payload = {"agent": QUESTION_GENERATOR_AGENT, "topic": topic}
+) -> Question:
+    """Call NeuralSeek once and map the response to our Question model."""
+    payload = {
+        "agent": QUESTION_GENERATOR_AGENT,
+        "params": [{"name": "chosenTopic", "value": topic}],
+        "options": {"temperatureMod": 20, "maxTokens": 70},
+    }
     response = await client.post(
         f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers
     )
+    print(response.json())
     response.raise_for_status()
     result = response.json()
 
@@ -211,7 +211,8 @@ async def generate_questions_with_neuralseek(
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
-        "embedcode": NEURALSEEK_EMBED_CODE or "",
+        "embedcode": NEURALSEEK_EMBED_CODE,
+        "apikey": NEURALSEEK_API_KEY,
     }
 
     async with httpx.AsyncClient(timeout=60) as client:

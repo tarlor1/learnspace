@@ -1,28 +1,35 @@
-/**
- * API client for making authenticated requests to the backend
- */
+import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-/**
- * Make an authenticated API request
- * @param endpoint - API endpoint (e.g., '/generate-questions')
- * @param options - Fetch options
- * @returns Response data
- */
+export const apiClient = axios.create({
+	baseURL: API_URL,
+	headers: {
+		"Content-Type": "application/json",
+	},
+	withCredentials: true,
+	timeout: 30000,
+});
+
+async function getAccessToken(): Promise<string> {
+	const tokenResponse = await fetch("/api/auth/token");
+	if (!tokenResponse.ok) throw new Error("Authentication required");
+	const { accessToken } = await tokenResponse.json();
+	if (!accessToken) throw new Error("Authentication required");
+	return accessToken;
+}
+
 export async function authenticatedFetch<T = any>(
 	endpoint: string,
 	options: RequestInit = {},
 ): Promise<T> {
-	// Get access token from Auth0 session
-	const tokenResponse = await fetch("/api/auth/token");
-	const { accessToken } = await tokenResponse.json();
+	const accessToken = await getAccessToken();
 
 	const response = await fetch(`${API_URL}${endpoint}`, {
 		...options,
 		headers: {
 			"Content-Type": "application/json",
-			...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+			Authorization: `Bearer ${accessToken}`,
 			...options.headers,
 		},
 	});
@@ -31,7 +38,7 @@ export async function authenticatedFetch<T = any>(
 		const error = await response
 			.json()
 			.catch(() => ({ message: "An error occurred" }));
-		throw new Error(error.message || error.detail || "API request failed");
+		throw new Error(error.detail || error.message || "API request failed");
 	}
 
 	return response.json();

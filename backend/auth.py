@@ -1,142 +1,61 @@
 import os
-from typing import Optional
-from fastapi import Depends, HTTPException, status
+from typing import Optional, Dict, Any
+from functools import lru_cache
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
+from jwt.exceptions import ExpiredSignatureError, InvalidAudienceError, InvalidTokenError
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv(".env.local")
+load_dotenv()
 
-# Auth0 configuration
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
-AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
-AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", f"https://{AUTH0_DOMAIN}/api/v2/")
+AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE")
 
-if not AUTH0_DOMAIN:
-    raise ValueError("AUTH0_DOMAIN must be set in environment variables")
+if not all([AUTH0_DOMAIN, AUTH0_AUDIENCE]):
+    raise ValueError("AUTH0_DOMAIN and AUTH0_AUDIENCE must be set in .env")
 
-if not AUTH0_AUDIENCE:
-    raise ValueError("AUTH0_AUDIENCE must be set in environment variables")
-
-# JWT configuration
-ALGORITHMS = ["RS256"]
 ISSUER = f"https://{AUTH0_DOMAIN}/"
+JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+ALGORITHMS = ["RS256"]
 
-# Security scheme
 security = HTTPBearer()
 
+@lru_cache(maxsize=1)
+def get_jwk_client() -> PyJWKClient:
+    return PyJWKClient(JWKS_URL)
 
-class AuthError(Exception):
-    """Custom exception for auth errors"""
-
-    def __init__(self, error: dict, status_code: int):
-        self.error = error
-        self.status_code = status_code
-
-
-def verify_token(token: str) -> dict:
-    """
-    Verify Auth0 JWT token
-
-    Args:
-        token: JWT token string
-
-    Returns:
-        Decoded token payload
-
-    Raises:
-        AuthError: If token is invalid
-    """
+def verify_token(token: str) -> Dict[str, Any]:
+    """Verify RS256 Auth0 JWT using JWKS."""
     try:
-        # Get the public key from Auth0
-        jwks_url = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
-        jwks_client = PyJWKClient(jwks_url)
-
-        # Get signing key
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-
-        # Decode and verify token
+        jwk_client = get_jwk_client()
+        signing_key = jwk_client.get_signing_key_from_jwt(token).key
         payload = jwt.decode(
             token,
-            signing_key.key,
+            signing_key,
             algorithms=ALGORITHMS,
             audience=AUTH0_AUDIENCE,
             issuer=ISSUER,
+            options={"verify_exp": True},
         )
-
         return payload
-
-    except jwt.ExpiredSignatureError:
-        raise AuthError(
-            {"code": "token_expired", "description": "Token has expired"}, 401
-        )
-    except (jwt.InvalidAudienceError, jwt.InvalidIssuerError):
-        raise AuthError(
-            {
-                "code": "invalid_claims",
-                "description": "Incorrect claims, please check the audience and issuer",
-            },
-            401,
-        )
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except InvalidAudienceError:
+        raise HTTPException(status_code=401, detail="Invalid audience")
+    except InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
     except Exception as e:
-        raise AuthError(
-            {
-                "code": "invalid_token",
-                "description": f"Unable to parse authentication token: {str(e)}",
-            },
-            401,
-        )
-
+        raise HTTPException(status_code=401, detail=f"Token verification failed: {e}")
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> dict:
-    """
-    FastAPI dependency to get current authenticated user
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Dict[str, Any]:
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Authorization token missing")
+    
+    token = credentials.credentials
+    payload = verify_token(token)
+    return payload
 
-    Args:
-        credentials: HTTP bearer token from request header
-
-    Returns:
-        User info from decoded token
-
-    Raises:
-        HTTPException: If authentication fails
-    """
-    try:
-        token = credentials.credentials
-        payload = verify_token(token)
-        return payload
-    except AuthError as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=e.error,
-        )
-
-
-async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
-        HTTPBearer(auto_error=False)
-    ),
-) -> Optional[dict]:
-    """
-    FastAPI dependency to get current user if authenticated, None otherwise
-    Useful for optional authentication on public endpoints
-
-    Args:
-        credentials: HTTP bearer token from request header (optional)
-
-    Returns:
-        User info from decoded token or None
-    """
-    if credentials is None:
-        return None
-
-    try:
-        token = credentials.credentials
-        payload = verify_token(token)
-        return payload
-    except AuthError:
-        return None

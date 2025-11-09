@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
 import { Auth0Provider } from "@auth0/nextjs-auth0/client";
+import QueryProvider from "@/components/QueryProvider";
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -39,9 +40,11 @@ export default function RootLayout({
 		<html lang="en">
 			<body className={`font-sans antialiased bg-background min-h-screen`}>
 				<Auth0Provider>
-					<Navbar />
-					<div className="pt-20 pb-20">{children}</div>
-					<BottomNav />
+					<QueryProvider>
+						<Navbar />
+						<div className="pt-20 pb-20">{children}</div>
+						<BottomNav />
+					</QueryProvider>
 				</Auth0Provider>
 			</body>
 		</html>

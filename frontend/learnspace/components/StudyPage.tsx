@@ -43,13 +43,13 @@ export default function StudyPage() {
 
 	const fetchQuestions = async (numQuestions: number): Promise<Question[]> => {
 		const token = await getAccessToken();
-		console.log('🔍 Fetching questions:', { numQuestions, hasToken: !!token });
+		console.log("🔍 Fetching questions:", { numQuestions, hasToken: !!token });
 		const response = await apiClient.post<GenerateQuestionsResponse>(
 			"/generate-questions",
-			{ num_questions: numQuestions },  // No topic - will use random topics
-			{ headers: { Authorization: `Bearer ${token}` } }
+			{ num_questions: numQuestions }, // No topic - will use random topics
+			{ headers: { Authorization: `Bearer ${token}` } },
 		);
-		console.log('✅ Questions received:', response.data);
+		console.log("✅ Questions received:", response.data);
 		return response.data.questions;
 	};
 
@@ -72,30 +72,31 @@ export default function StudyPage() {
 			// Always allow fetching more questions (infinite scrolling)
 			return LOAD_MORE_BATCH_SIZE;
 		},
-		enabled: !!user,  // Auto-load when user is authenticated
+		enabled: !!user, // Auto-load when user is authenticated
 	});
 
 	useEffect(() => {
 		if (!loadMoreRef.current || !hasNextPage || isFetchingNextPage) return;
-		
+
 		observerRef.current = new IntersectionObserver(
 			(entries) => {
 				if (entries[0].isIntersecting) {
 					fetchNextPage();
 				}
 			},
-			{ rootMargin: "200px", threshold: 0.1 }
+			{ rootMargin: "200px", threshold: 0.1 },
 		);
 
 		const node = loadMoreRef.current;
 		observerRef.current.observe(node);
-		
+
 		return () => observerRef.current?.disconnect();
 	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-	const flatQuestions: Question[] = data?.pages.flatMap((page) => page.questions) || [];
+	const flatQuestions: Question[] =
+		data?.pages.flatMap((page) => page.questions) || [];
 
-	console.log('📊 Study Page State:', {
+	console.log("📊 Study Page State:", {
 		authLoading,
 		user: !!user,
 		isLoading,
@@ -103,7 +104,7 @@ export default function StudyPage() {
 		error: error?.message,
 		pagesCount: data?.pages?.length,
 		flatQuestionsCount: flatQuestions.length,
-		data
+		data,
 	});
 
 	if (authLoading) {
@@ -138,7 +139,9 @@ export default function StudyPage() {
 					<AlertCircle className="h-4 w-4" />
 					<AlertTitle>Error Loading Questions</AlertTitle>
 					<AlertDescription>
-						{error instanceof Error ? error.message : "Failed to load questions"}
+						{error instanceof Error
+							? error.message
+							: "Failed to load questions"}
 					</AlertDescription>
 				</Alert>
 			</div>
@@ -152,7 +155,8 @@ export default function StudyPage() {
 					Practice Questions
 				</h2>
 				<p className="text-muted-foreground text-sm mt-1">
-					{flatQuestions.length} question{flatQuestions.length !== 1 ? "s" : ""} loaded
+					{flatQuestions.length} question{flatQuestions.length !== 1 ? "s" : ""}{" "}
+					loaded
 					{hasNextPage && " · Scroll for more"}
 				</p>
 			</div>

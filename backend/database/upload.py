@@ -37,7 +37,9 @@ embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
 print(f"✅ Initialized Hybrid GraphRAG Module")
-print(f"   Embedding Model: {EMBEDDING_MODEL} ({embedding_model.get_sentence_embedding_dimension()} dimensions)")
+print(
+    f"   Embedding Model: {EMBEDDING_MODEL} ({embedding_model.get_sentence_embedding_dimension()} dimensions)"
+)
 print(f"   Neo4j URI: {NEO4J_URI}")
 
 
@@ -47,15 +49,36 @@ class PDFProcessor:
     @staticmethod
     def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         """Extract all text from a PDF file"""
+        print(f"📖 Extracting text from PDF...")
+        print(f"   PDF size: {len(pdf_bytes)} bytes")
+
         reader = PdfReader(BytesIO(pdf_bytes))
+        total_pages = len(reader.pages)
+        print(f"   Total pages: {total_pages}")
+
         text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
+        for i, page in enumerate(reader.pages, 1):
+            page_text = page.extract_text()
+            text += page_text + "\n"
+
+            # Progress indicator every 10 pages
+            if i % 10 == 0 or i == total_pages:
+                print(
+                    f"   📄 Extracted {i}/{total_pages} pages ({len(text)} chars so far)"
+                )
+
+        print(f"✅ PDF extraction complete: {len(text)} characters extracted")
         return text
 
     @staticmethod
-    def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
+    def chunk_text(
+        text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
+    ) -> List[str]:
         """Split text into overlapping chunks"""
+        print(f"📝 Starting text chunking...")
+        print(f"   Text length: {len(text)} characters")
+        print(f"   Chunk size: {chunk_size}, Overlap: {overlap}")
+
         chunks = []
         start = 0
         text_length = len(text)
@@ -66,18 +89,27 @@ class PDFProcessor:
 
             # Try to break at sentence boundaries
             if end < text_length:
-                last_period = chunk.rfind('.')
-                last_newline = chunk.rfind('\n')
+                last_period = chunk.rfind(".")
+                last_newline = chunk.rfind("\n")
                 break_point = max(last_period, last_newline)
 
                 if break_point > chunk_size * 0.5:  # Only break if it's not too early
-                    chunk = chunk[:break_point + 1]
+                    chunk = chunk[: break_point + 1]
                     end = start + break_point + 1
 
             chunks.append(chunk.strip())
             start = end - overlap
 
-        return [c for c in chunks if c]  # Filter empty chunks
+            # Progress indicator every 50 chunks
+            if len(chunks) % 50 == 0:
+                progress = (start / text_length) * 100
+                print(
+                    f"   📊 Chunking progress: {len(chunks)} chunks created ({progress:.1f}%)"
+                )
+
+        filtered_chunks = [c for c in chunks if c]
+        print(f"✅ Chunking complete: {len(filtered_chunks)} chunks created")
+        return filtered_chunks
 
 
 class ConceptExtractor:
@@ -95,13 +127,12 @@ Text: {chunk_text[:500]}
 Concepts:"""
 
             response = client.models.generate_content(
-                model='gemini-2.0-flash-exp',
-                contents=prompt
+                model="gemini-2.0-flash-exp", contents=prompt
             )
 
             if response.text:
                 concepts_text = response.text.strip()
-                concepts = [c.strip() for c in concepts_text.split(',')]
+                concepts = [c.strip() for c in concepts_text.split(",")]
                 return concepts[:max_concepts]
             return []
 
@@ -109,7 +140,9 @@ Concepts:"""
             # Rate limit or quota exceeded - skip concept extraction
             error_msg = str(e)
             if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                print(f"⚠️  Gemini quota exceeded - skipping concept extraction (search still works!)")
+                print(
+                    f"⚠️  Gemini quota exceeded - skipping concept extraction (search still works!)"
+                )
             else:
                 print(f"⚠️  Concept extraction failed: {e}")
             return []
@@ -128,7 +161,8 @@ class GraphRAGIndexer:
         """Create vector index for chunk embeddings (run once)"""
         with self.driver.session() as session:
             try:
-                session.run("""
+                session.run(
+                    """
                 CREATE VECTOR INDEX chunk_embeddings IF NOT EXISTS
                 FOR (c:Chunk) ON (c.embedding)
                 OPTIONS {
@@ -137,7 +171,8 @@ class GraphRAGIndexer:
                     `vector.similarity_function`: 'cosine'
                   }
                 }
-                """)
+                """
+                )
                 print("✅ Vector index created/verified")
             except Exception as e:
                 print(f"⚠️  Vector index creation: {e}")
@@ -147,7 +182,7 @@ class GraphRAGIndexer:
         document_id: str,
         chunks: List[str],
         document_name: str,
-        chapter_id: Optional[str] = None
+        chapter_id: Optional[str] = None,
     ) -> int:
         """
         Index all chunks from a document into Neo4j
@@ -171,10 +206,14 @@ class GraphRAGIndexer:
 
         with self.driver.session() as session:
             # Step 1: Create root Document node
-            session.run("""
+            session.run(
+                """
             MERGE (d:Document {id: $doc_id})
             SET d.name = $name, d.created_at = datetime()
-            """, doc_id=document_id, name=document_name)
+            """,
+                doc_id=document_id,
+                name=document_name,
+            )
 
             print(f"📚 Created Document node: {document_id}")
 
@@ -190,7 +229,8 @@ class GraphRAGIndexer:
                         concepts = self.concept_extractor.extract_concepts(chunk_text)
 
                     # Create Chunk node and link to Document
-                    session.run("""
+                    session.run(
+                        """
                     MATCH (d:Document {id: $doc_id})
                     CREATE (c:Chunk {
                         id: $chunk_id,
@@ -208,18 +248,23 @@ class GraphRAGIndexer:
                         text=chunk_text,
                         embedding=embedding,
                         chapter_id=chapter_id,
-                        index=i
+                        index=i,
                     )
 
                     # Link concepts
                     if concepts:
-                        session.run("""
+                        session.run(
+                            """
                         MATCH (c:Chunk {document_id: $doc_id, chunk_index: $index})
                         WITH c
                         UNWIND $concepts AS concept_name
                         MERGE (con:Concept {name: concept_name})
                         CREATE (c)-[:MENTIONS]->(con)
-                        """, doc_id=document_id, index=i, concepts=concepts)
+                        """,
+                            doc_id=document_id,
+                            index=i,
+                            concepts=concepts,
+                        )
 
                     indexed_count += 1
 
@@ -234,10 +279,7 @@ class GraphRAGIndexer:
         return indexed_count
 
     def query_document(
-        self,
-        document_id: str,
-        query_text: str,
-        top_k: int = 5
+        self, document_id: str, query_text: str, top_k: int = 5
     ) -> List[Dict[str, Any]]:
         """
         Query a specific document using vector similarity
@@ -253,7 +295,8 @@ class GraphRAGIndexer:
         query_embedding = self.embedding_model.encode(query_text).tolist()
 
         with self.driver.session() as session:
-            result = session.run("""
+            result = session.run(
+                """
             // Step 1: Find the root Document node
             MATCH (d:Document {id: $doc_id})
 
@@ -272,16 +315,22 @@ class GraphRAGIndexer:
                    node.chapter_id AS chapter_id,
                    score
             ORDER BY score DESC
-            """, doc_id=document_id, query_vector=query_embedding, top_k=top_k)
+            """,
+                doc_id=document_id,
+                query_vector=query_embedding,
+                top_k=top_k,
+            )
 
             chunks = []
             for record in result:
-                chunks.append({
-                    "text": record["text"],
-                    "chunk_index": record["chunk_index"],
-                    "chapter_id": record["chapter_id"],
-                    "score": record["score"]
-                })
+                chunks.append(
+                    {
+                        "text": record["text"],
+                        "chunk_index": record["chunk_index"],
+                        "chapter_id": record["chapter_id"],
+                        "score": record["score"],
+                    }
+                )
 
             return chunks
 
@@ -310,12 +359,304 @@ class DocumentUploadPipeline:
         # Ensure vector index exists
         self.indexer.create_vector_index()
 
-    def process_upload(
+    def _create_symbolic_chapters(
+        self, chunks: List[str], document_id: str, chunks_per_chapter: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Create symbolic chapters by splitting chunks into groups and generating summaries.
+
+        Args:
+            chunks: List of text chunks
+            document_id: Document UUID
+            chunks_per_chapter: Number of chunks per chapter (default: 30)
+
+        Returns:
+            List of chapter data dicts with id, name, summary, start_idx, end_idx
+        """
+        print(f"\n📚 Creating symbolic chapters...")
+        print(f"   Total chunks: {len(chunks)}")
+        print(f"   Chunks per chapter: {chunks_per_chapter}")
+
+        chapters_data = []
+        total_chunks = len(chunks)
+        estimated_chapters = (
+            total_chunks + chunks_per_chapter - 1
+        ) // chunks_per_chapter
+        print(f"   Estimated chapters: {estimated_chapters}")
+
+        for chapter_num in range(0, total_chunks, chunks_per_chapter):
+            start_idx = chapter_num
+            end_idx = min(chapter_num + chunks_per_chapter, total_chunks)
+            chapter_chunks = chunks[start_idx:end_idx]
+
+            current_chapter = len(chapters_data) + 1
+            print(
+                f"\n   🔄 Processing chapter {current_chapter}/{estimated_chapters}..."
+            )
+            print(f"      Chunks {start_idx}-{end_idx} ({len(chapter_chunks)} chunks)")
+
+            # Generate chapter title and summary using NeuralSeek make_chapter agent
+            print(f"      🤖 Calling NeuralSeek make_chapter agent...")
+            chapter_info = self._generate_chapter_summary(chapter_chunks[:5])
+            print(f"      ✅ Got title: '{chapter_info['title']}'")
+
+            # Use UUID objects, not strings, to match the model
+            chapter_id = uuid.uuid4()
+            chapter_number = len(chapters_data) + 1
+            chapter_title = chapter_info["title"]
+            chapter_summary = chapter_info["summary"]
+
+            chapter_data = {
+                "id": str(chapter_id),  # Store as string for JSON serialization
+                "document_id": document_id,
+                "chapter_number": chapter_number,
+                "title": chapter_title,
+                "summary": chapter_summary,
+                "start_chunk_idx": start_idx,
+                "end_chunk_idx": end_idx,
+            }
+
+            chapters_data.append(chapter_data)
+
+            # Create Chapter record in database with UUID objects
+            # Convert document_id to UUID if it's a string
+            doc_uuid = (
+                uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+            )
+
+            chapter = Chapter(
+                id=chapter_id,  # Pass UUID object, not string
+                doc_id=doc_uuid,  # Pass UUID object, not string
+                chapter_number=chapter_number,
+                title=chapter_title,
+                summary=chapter_summary,
+            )
+            self.db.add(chapter)
+
+            print(f"   📖 Created '{chapter_title}': chunks {start_idx}-{end_idx}")
+            print(f"      Summary: {chapter_summary[:100]}...")
+
+        self.db.commit()
+        print(f"✅ Created {len(chapters_data)} symbolic chapters")
+
+        return chapters_data
+
+    def _generate_chapter_summary(self, chapter_chunks: List[str]) -> Dict[str, str]:
+        """
+        Generate a title and summary for a chapter using NeuralSeek make_chapter agent.
+        Falls back to a simple description if API fails.
+
+        Args:
+            chapter_chunks: First few chunks of the chapter
+
+        Returns:
+            Dict with 'title' and 'summary' keys
+        """
+        import asyncio
+
+        try:
+            # Import call_maistro_agent from utils
+            import sys
+            from pathlib import Path
+
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from utils import call_maistro_agent
+
+            # Combine first few chunks for context (limit to 3000 chars)
+            chapter_text = "\n\n".join(chapter_chunks[:5])[:3000]
+
+            # Call NeuralSeek make_chapter agent with timeout
+            async def call_with_timeout():
+                return await asyncio.wait_for(
+                    call_maistro_agent(
+                        agent_name="make_chapter", params={"chapter_text": chapter_text}
+                    ),
+                    timeout=30.0,  # 30 second timeout
+                )
+
+            # Check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, create a new thread to run the coroutine
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, call_with_timeout())
+                    response = future.result(
+                        timeout=35.0
+                    )  # 5 seconds extra for overhead
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run()
+                response = asyncio.run(call_with_timeout())
+
+            print(f"      📥 Raw NeuralSeek response: {response}")
+
+            # Parse the response
+            answer = response.get("answer", "{}")
+            print(f"      🔍 Answer field type: {type(answer)}")
+            print(f"      🔍 Answer content: {answer}")
+
+            # The answer might be a JSON string or already a dict
+            if isinstance(answer, str):
+                # Remove markdown code blocks if present
+                if answer.startswith("```json"):
+                    answer = answer.strip("```json").strip().strip("```")
+                elif answer.startswith("```"):
+                    answer = answer.strip("```").strip()
+
+                import json
+
+                chapter_data = json.loads(answer)
+            elif isinstance(answer, dict):
+                chapter_data = answer
+            else:
+                raise ValueError(f"Unexpected answer type: {type(answer)}")
+
+            title = chapter_data.get("title", "Section")
+            summary = chapter_data.get("summary", "")
+
+            print(f"      ✅ Parsed title: '{title}'")
+            print(f"      ✅ Parsed summary: '{summary[:100]}...'")
+
+            return {
+                "title": title[:200],  # Limit title length
+                "summary": summary[:500],  # Limit summary length
+            }
+
+        except asyncio.TimeoutError:
+            print(f"⚠️  Chapter summary generation timed out (30s) - using fallback")
+            # Fallback: Return generic title and first 200 chars of first chunk
+            return {
+                "title": "Section",
+                "summary": (
+                    chapter_chunks[0][:200] + "..."
+                    if chapter_chunks
+                    else "Section content"
+                ),
+            }
+        except Exception as e:
+            print(f"⚠️  Chapter summary generation failed: {e}")
+
+            # Fallback: Return generic title and first 200 chars of first chunk
+            return {
+                "title": "Section",
+                "summary": (
+                    chapter_chunks[0][:200] + "..."
+                    if chapter_chunks
+                    else "Section content"
+                ),
+            }
+
+    def _index_chunks_with_chapters(
         self,
-        pdf_bytes: bytes,
-        filename: str,
-        user_id: str,
-        storage_url: str
+        document_id: str,
+        chunks: List[str],
+        document_name: str,
+        chapters_data: List[Dict[str, Any]],
+    ) -> int:
+        """
+        Index chunks with their assigned chapter IDs.
+
+        Args:
+            document_id: Document UUID
+            chunks: All text chunks
+            document_name: Name of document
+            chapters_data: List of chapter metadata with start/end indices
+
+        Returns:
+            Number of indexed chunks
+        """
+        indexed_count = 0
+
+        with self.indexer.driver.session() as session:
+            # Create root Document node
+            session.run(
+                """
+            MERGE (d:Document {id: $doc_id})
+            SET d.name = $name, d.created_at = datetime()
+            """,
+                doc_id=document_id,
+                name=document_name,
+            )
+
+            print(f"📚 Created Document node: {document_id}")
+
+            # Index each chunk with its chapter_id
+            for i, chunk_text in enumerate(chunks):
+                try:
+                    # Find which chapter this chunk belongs to
+                    chapter_id = None
+                    for chapter in chapters_data:
+                        if chapter["start_chunk_idx"] <= i < chapter["end_chunk_idx"]:
+                            chapter_id = chapter["id"]
+                            break
+
+                    # Progress indicator every 10 chunks
+                    if (i + 1) % 10 == 0:
+                        progress = ((i + 1) / len(chunks)) * 100
+                        print(
+                            f"   🔗 Indexing progress: {i + 1}/{len(chunks)} chunks ({progress:.1f}%)"
+                        )
+
+                    # Generate embedding
+                    embedding = self.indexer.embedding_model.encode(chunk_text).tolist()
+
+                    # Extract concepts (optional)
+                    concepts = []
+                    if self.indexer.extract_concepts_enabled:
+                        concepts = self.indexer.concept_extractor.extract_concepts(
+                            chunk_text
+                        )
+
+                    # Create Chunk node with chapter_id
+                    session.run(
+                        """
+                    MATCH (d:Document {id: $doc_id})
+                    CREATE (c:Chunk {
+                        id: $chunk_id,
+                        text: $text,
+                        embedding: $embedding,
+                        document_id: $doc_id,
+                        chapter_id: $chapter_id,
+                        chunk_index: $index,
+                        created_at: datetime()
+                    })
+                    CREATE (c)-[:PART_OF]->(d)
+                    """,
+                        doc_id=document_id,
+                        chunk_id=str(uuid.uuid4()),
+                        text=chunk_text,
+                        embedding=embedding,
+                        chapter_id=chapter_id,
+                        index=i,
+                    )
+
+                    # Link concepts
+                    if concepts:
+                        session.run(
+                            """
+                        MATCH (c:Chunk {document_id: $doc_id, chunk_index: $index})
+                        WITH c
+                        UNWIND $concepts AS concept_name
+                        MERGE (con:Concept {name: concept_name})
+                        CREATE (c)-[:MENTIONS]->(con)
+                        """,
+                            doc_id=document_id,
+                            index=i,
+                            concepts=concepts,
+                        )
+
+                    indexed_count += 1
+
+                except Exception as e:
+                    print(f"⚠️  Error indexing chunk {i}: {e}")
+                    continue
+
+        print(f"✅ Indexed {indexed_count} chunks with chapter assignments")
+        return indexed_count
+
+    def process_upload(
+        self, pdf_bytes: bytes, filename: str, user_id: str, storage_url: str
     ) -> Document:
         """
         Complete upload pipeline:
@@ -341,7 +682,7 @@ class DocumentUploadPipeline:
             owner_id=user_id,
             name=filename,
             storage_url=storage_url,
-            status="processing"
+            status="processing",
         )
         self.db.add(doc)
         self.db.commit()
@@ -351,20 +692,32 @@ class DocumentUploadPipeline:
 
         try:
             # Phase 1.2: Chunk the PDF
+            print(f"\n📄 Phase 1.2: Extracting and chunking PDF...")
             text = self.pdf_processor.extract_text_from_pdf(pdf_bytes)
             chunks = self.pdf_processor.chunk_text(text)
 
-            print(f"📄 Extracted {len(chunks)} chunks from PDF")
+            print(f"✅ Chunking complete: {len(chunks)} chunks from PDF")
 
-            # Phase 1.3: Build the Graph + Vector Index
-            indexed_count = self.indexer.index_document(
+            # Phase 1.3: Create Symbolic Chapters
+            print(f"\n📊 Phase 1.3: Creating symbolic chapters...")
+            chapters_data = self._create_symbolic_chapters(chunks, str(doc.id))
+            print(
+                f"✅ Chapter creation complete: {len(chapters_data)} chapters created"
+            )
+
+            # Phase 1.4: Build the Graph + Vector Index with chapter assignments
+            print(f"\n🔗 Phase 1.4: Indexing chunks in Neo4j...")
+            indexed_count = self._index_chunks_with_chapters(
                 document_id=str(doc.id),
                 chunks=chunks,
-                document_name=filename
+                document_name=filename,
+                chapters_data=chapters_data,
             )
 
             # Update status
-            self.db.query(Document).filter(Document.id == doc.id).update({"status": "ready"})
+            self.db.query(Document).filter(Document.id == doc.id).update(
+                {"status": "ready"}
+            )
             self.db.commit()
             self.db.refresh(doc)
 
@@ -373,14 +726,23 @@ class DocumentUploadPipeline:
 
         except Exception as e:
             print(f"❌ Upload failed: {e}")
-            self.db.query(Document).filter(Document.id == doc.id).update({"status": "error"})
-            self.db.commit()
+            # Rollback the transaction first to clear any errors
+            self.db.rollback()
+
+            # Then try to update the document status
+            try:
+                self.db.query(Document).filter(Document.id == doc.id).update(
+                    {"status": "error"}
+                )
+                self.db.commit()
+            except Exception as update_error:
+                print(f"⚠️  Failed to update document status: {update_error}")
+                self.db.rollback()
+
             raise
 
     def generate_question_from_document(
-        self,
-        document_id: str,
-        topic: Optional[str] = None
+        self, document_id: str, topic: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate a question using GraphRAG query
@@ -397,9 +759,7 @@ class DocumentUploadPipeline:
 
         # Query the graph for relevant chunks
         relevant_chunks = self.indexer.query_document(
-            document_id=document_id,
-            query_text=query,
-            top_k=5
+            document_id=document_id, query_text=query, top_k=5
         )
 
         if not relevant_chunks:
@@ -424,8 +784,7 @@ Generate a JSON response with this structure:
 
         try:
             response = client.models.generate_content(
-                model='gemini-2.0-flash-exp',
-                contents=prompt
+                model="gemini-2.0-flash-exp", contents=prompt
             )
 
             # Parse response (simplified - add proper JSON parsing)
@@ -433,7 +792,7 @@ Generate a JSON response with this structure:
                 "document_id": document_id,
                 "question": response.text,
                 "context_chunks": len(relevant_chunks),
-                "relevant_chunks": relevant_chunks
+                "relevant_chunks": relevant_chunks,
             }
 
         except Exception as e:
@@ -443,11 +802,7 @@ Generate a JSON response with this structure:
 
 # Convenience function for FastAPI route
 def upload_pdf_to_graphrag(
-    pdf_bytes: bytes,
-    filename: str,
-    user_id: str,
-    storage_url: str,
-    db_session: Session
+    pdf_bytes: bytes, filename: str, user_id: str, storage_url: str, db_session: Session
 ) -> Document:
     """
     Convenience wrapper for upload pipeline

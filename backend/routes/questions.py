@@ -20,7 +20,7 @@ from auth import get_current_user
 from utils import generate_question_from_context
 
 router = APIRouter(
-    prefix="/api/questions",
+    prefix="",
     tags=["Questions"],
 )
 

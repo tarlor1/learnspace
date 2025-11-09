@@ -20,7 +20,7 @@ if not SUPABASE_DB_URL:
 # Create SQLAlchemy engine
 engine = create_engine(
     SUPABASE_DB_URL,
-    echo=True,  # Set to False in production
+    echo=False,  # Disable SQL query logging for better performance
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

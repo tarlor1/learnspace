@@ -18,7 +18,7 @@ if not all([NEURALSEEK_API_KEY, NEURALSEEK_EMBED_CODE, QUESTION_GENERATOR_AGENT,
 
 async def _fetch_one_question(client: httpx.AsyncClient, headers: Dict[str, str], topic: str) -> Question:
     """Call NeuralSeek once and map the response to our Question model."""
-    payload = {"agent": QUESTION_GENERATOR_AGENT, "params": [{"name": "chosenTopic", "value": topic}], "options": {"temperatureMod": 20, "maxTokens": 70}}
+    payload = {"agent": QUESTION_GENERATOR_AGENT, "params": [{"name": "chosenTopic", "value": topic}], "options": {"temperatureMod": 20, "maxTokens": 25}}
     response = await client.post(f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers)
     print(response.json())
     response.raise_for_status()
@@ -48,11 +48,11 @@ async def validate_answer_with_neuralseek(topic: str, question_text: str, user_a
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
         "embedcode": NEURALSEEK_EMBED_CODE,
+        "apikey": NEURALSEEK_API_KEY,
     }
     
     try:
-        parameters = {"topic": topic, "question": question_text, "answer": user_answer}
-        payload = {"agent": ANSWER_VALIDATOR_AGENT, "topic": topic, "parameters": parameters}
+        payload = {"agent": ANSWER_VALIDATOR_AGENT, "params": [{"name": "user_answer", "value": user_answer}, {"name": "question", "value": question_text}, {"name": "chosenTopic", "value": topic}], "options": {"temperatureMod": 20, "maxTokens": 25}}
 
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers)
@@ -60,8 +60,4 @@ async def validate_answer_with_neuralseek(topic: str, question_text: str, user_a
             return response.json()
         
     except Exception as e:
-        return {
-            "score": 0.5,
-            "feedback": "Unable to automatically grade this answer.",
-            "is_correct": None,
-        }
+        return {"feedback": "Unable to automatically grade this answer."}

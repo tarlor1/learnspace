@@ -103,6 +103,7 @@ async def submit_answer(
             question_text=question_text,
             user_answer=request.answer
         )
+        print(validation)
 
         return SubmitAnswerResponse(
             message="Answer submitted successfully",

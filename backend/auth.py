@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any
 from functools import lru_cache
 from fastapi import Depends, HTTPException, status, APIRouter
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 import jwt
 from jwt import PyJWKClient
 from jwt.exceptions import (
@@ -111,8 +112,35 @@ async def get_optional_user(
 
 
 @router.get("/me", response_model=dict)
-async def get_me(current_user: dict = Depends(get_current_user)):
+async def get_me(
+    current_user: dict = Depends(get_current_user),
+):
     """
     Returns the profile of the currently authenticated user.
+    Automatically creates user profile in database on first login.
     """
-    return current_user
+    # Import here to avoid circular dependency
+    from database.connection import get_db
+    from database.models.user import UserProfile
+
+    # Get database session
+    db = next(get_db())
+
+    try:
+        user_id = current_user.get("sub")
+
+        # Ensure user profile exists in database
+        if user_id:
+            user_profile = (
+                db.query(UserProfile).filter(UserProfile.id == user_id).first()
+            )
+            if not user_profile:
+                print(f"✅ Creating new user profile for: {user_id}")
+                user_profile = UserProfile(id=user_id)
+                db.add(user_profile)
+                db.commit()
+                db.refresh(user_profile)
+
+        return current_user
+    finally:
+        db.close()

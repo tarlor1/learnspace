@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, APIRouter
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
@@ -26,6 +26,11 @@ ISSUER = f"https://{AUTH0_DOMAIN}/"
 
 # Security scheme
 security = HTTPBearer()
+
+router = APIRouter(
+    prefix="/api/auth",
+    tags=["Authentication"],
+)
 
 
 class AuthError(Exception):
@@ -140,3 +145,11 @@ async def get_optional_user(
         return payload
     except AuthError:
         return None
+
+
+@router.get("/me", response_model=dict)
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """
+    Returns the profile of the currently authenticated user.
+    """
+    return current_user

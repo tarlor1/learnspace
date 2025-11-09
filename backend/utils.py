@@ -1,128 +1,165 @@
 import os
 import httpx
 import json
-from typing import List, Dict, Any
-from models import Question
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
+import logging
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env.local
+load_dotenv(".env.local")
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# NeuralSeek API Configuration
-NEURALSEEK_API_URL = os.getenv("NEURALSEEK_API_URL", "https://api.neuralseek.com/v1")
-NEURALSEEK_API_KEY = os.getenv("NEURALSEEK_API_KEY", "your-api-key-here")
-NEURALSEEK_EMBED_CODE = os.getenv("NEURALSEEK_EMBED_CODE", "your-embed-code-here")
+# --- NeuralSeek API Configuration ---
+NEURALSEEK_API_URL = os.getenv("NEURALSEEK_API_URL")
+NEURALSEEK_API_KEY = os.getenv("NEURALSEEK_API_KEY")
+NEURALSEEK_INSTANCE_ID = os.getenv("NEURALSEEK_INSTANCE_ID")  # e.g., "stony15"
 
-# NeuralSeek Agent Names - customize these based on your actual agent names
-QUESTION_GENERATOR_AGENT = os.getenv(
-    "QUESTION_GENERATOR_AGENT", "question_generator_agent"
-)
-ANSWER_VALIDATOR_AGENT = os.getenv("ANSWER_VALIDATOR_AGENT", "answer_validator_agent")
-CONTENT_ANALYZER_AGENT = os.getenv("CONTENT_ANALYZER_AGENT", "content_analyzer_agent")
+# Agent Names
+MAKE_QUESTION_AGENT = os.getenv("MAKE_QUESTION_AGENT", "make_question")
 
-print(f"✅ Loaded NeuralSeek Config:")
-print(f"   URL: {NEURALSEEK_API_URL}")
-print(
-    f"   API Key: {'*' * 20}{NEURALSEEK_API_KEY[-4:] if len(NEURALSEEK_API_KEY) > 4 else '****'}"
-)
-print(
-    f"   EMBED CODE: {'*' * 20}{NEURALSEEK_EMBED_CODE[-4:] if len(NEURALSEEK_EMBED_CODE) > 4 else '****'}"
-)
-print(f"   Question Agent: {QUESTION_GENERATOR_AGENT}")
+# Validate configuration
+if not all([NEURALSEEK_API_URL, NEURALSEEK_API_KEY, NEURALSEEK_INSTANCE_ID]):
+    raise ValueError(
+        "NEURALSEEK_API_URL, NEURALSEEK_API_KEY, and NEURALSEEK_INSTANCE_ID must be set in .env.local"
+    )
 
-
-async def generate_questions_with_neuralseek(num_questions: int = 10) -> List[Question]:
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
-        "embedcode": NEURALSEEK_EMBED_CODE,
-    }
-
-    print(f"\n🤖 Generating {num_questions} questions via NeuralSeek")
-    print(f"📡 API URL: {NEURALSEEK_API_URL}/maistro")
-
-    questions = []
-
-    # Make multiple requests to generate questions one at a time
-    async with httpx.AsyncClient(timeout=60) as client:
-        for i in range(num_questions):
-            try:
-                payload = {"agent": QUESTION_GENERATOR_AGENT}
-
-                response = await client.post(
-                    f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers
-                )
-                response.raise_for_status()
-
-                result = response.json()
-                print(f"✅ Response {i+1}: {response.status_code}")
-                print(f"📦 Data: {json.dumps(result, indent=2)[:300]}...")
-
-            except Exception as e:
-                import traceback
-
-                traceback.print_exc()
-
-    print(f"\n✅ Total questions generated: {len(questions)}")
-    return questions[:num_questions]  # Ensure we return exactly num_questions
+logger.info("✅ NeuralSeek Config Loaded")
+logger.info(f"   URL: {NEURALSEEK_API_URL}")
+logger.info(f"   Instance ID: {NEURALSEEK_INSTANCE_ID}")
 
 
-async def validate_answer_with_neuralseek(
-    question_text: str, user_answer: str
+async def call_maistro_agent(
+    agent_name: str, params: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
+    """
+    Generic function to call a NeuralSeek mAIstro agent.
+
+    Args:
+        agent_name: The name of the agent to run.
+        params: A dictionary of parameters to pass to the agent.
+
+    Returns:
+        The JSON response from the agent.
+
+    Raises:
+        httpx.HTTPStatusError: If the API call fails.
+    """
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
-        "embedcode": NEURALSEEK_EMBED_CODE,
+        "apikey": NEURALSEEK_API_KEY,
     }
 
-    print(f"\n🤖 Validating Answer via NeuralSeek")
-    print(f"📡 API URL: {NEURALSEEK_API_URL}/maistro")
+    if not NEURALSEEK_API_URL or not NEURALSEEK_INSTANCE_ID:
+        raise ValueError("NeuralSeek API configuration is incomplete.")
 
+    # The instance ID is part of the URL path
+    api_url = f"{NEURALSEEK_API_URL.rstrip('/')}/{NEURALSEEK_INSTANCE_ID}/maistro"
+
+    payload: Dict[str, Any] = {"agent": agent_name}
+    if params:
+        payload["params"] = params
+
+    logger.info("🤖 Calling NeuralSeek mAIstro...")
+    logger.info(f"   URL: {api_url}")
+    logger.info(f"   Agent: {agent_name}")
+    logger.info(f"   Params: {json.dumps(params, indent=2)}")
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.post(api_url, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+            logger.info("✅ NeuralSeek call successful.")
+            return result
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ HTTP Error calling NeuralSeek: {e.response.status_code}")
+            logger.error(f"   Response: {e.response.text}")
+            raise
+        except Exception as e:
+            logger.error(f"❌ An unexpected error occurred during NeuralSeek call: {e}")
+            raise
+
+
+async def generate_question_from_context(context: str) -> Dict[str, Any]:
+    """
+    Generates a question using the 'make_question' agent with provided context.
+
+    Args:
+        context: A string containing the relevant chunks of text.
+
+    Returns:
+        A dictionary representing the structured question from the agent's response.
+    """
+    logger.info("Generating question from context using 'make_question' agent.")
+
+    # The 'make_question' agent expects the context in the 'relevant_chunks' parameter
+    agent_params = {"relevant_chunks": context}
+
+    # Call the generic agent function
+    response = await call_maistro_agent(
+        agent_name=MAKE_QUESTION_AGENT, params=agent_params
+    )
+
+    # The actual question is in the 'answer' field
     try:
-        parameters = {"question": question_text, "answer": user_answer}
+        answer = response.get("answer", {})
 
-        print(f"🤖 Calling NeuralSeek agent: {ANSWER_VALIDATOR_AGENT}")
+        logger.info(f"   Answer type: {type(answer)}")
+        logger.info(f"   Full response keys: {response.keys()}")
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            try:
-                payload = {"agent": ANSWER_VALIDATOR_AGENT, "parameters": parameters}
+        # The answer might be a JSON string or already a dict
+        if isinstance(answer, str):
+            # It might be wrapped in markdown ```json ... ```
+            if answer.startswith("```json"):
+                answer = answer.strip("```json").strip().strip("```")
 
-                response = await client.post(
-                    f"{NEURALSEEK_API_URL}/maistro", json=payload, headers=headers
+            # Try to fix truncated JSON by adding missing closing characters
+            if answer and not answer.rstrip().endswith("}"):
+                logger.warning(
+                    "   Detected potentially truncated JSON, attempting to fix..."
                 )
-                response.raise_for_status()
+                # Count opening and closing braces
+                open_braces = answer.count("{")
+                close_braces = answer.count("}")
+                missing_braces = open_braces - close_braces
 
-                result = response.json()
-                print(f"📦 Data: {json.dumps(result, indent=2)[:300]}...")
+                # Add missing quotes if the string ends mid-value
+                if answer.rstrip()[-1] not in ['"', "}", "]"]:
+                    answer += '"'
 
-                # Return the validation result from NeuralSeek
-                return {
-                    "score": result.get("score", 0.5),
-                    "feedback": result.get("feedback", "Answer validated."),
-                    "is_correct": result.get("is_correct", None),
-                    "suggestions": result.get("suggestions", []),
-                }
+                # Add missing braces
+                answer += "}" * missing_braces
 
-            except Exception as e:
-                import traceback
+            structured_question = json.loads(answer)
+        elif isinstance(answer, dict):
+            # It's already a dictionary
+            structured_question = answer
+        else:
+            raise ValueError(f"Unexpected answer type: {type(answer)}")
 
-                traceback.print_exc()
-
-                # Return default validation result if API fails
-                return {
-                    "score": 0.5,
-                    "feedback": "Unable to automatically grade this answer. Manual review recommended.",
-                    "is_correct": None,
-                    "suggestions": [],
-                }
-
-    except Exception as e:
-        # Return default validation result if API fails
+        logger.info("Successfully parsed structured question from agent response.")
+        return structured_question
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error(
+            f"❌ Failed to parse JSON from NeuralSeek agent's 'answer' field: {e}"
+        )
+        logger.error(f"   Raw answer received: {response.get('answer')}")
+        logger.error(f"   Full response: {json.dumps(response, indent=2)}")
+        # Return a structured error response
         return {
-            "score": 0.5,
-            "feedback": "Unable to automatically grade this answer. Manual review recommended.",
-            "is_correct": None,
-            "suggestions": [],
+            "error": "Failed to parse question from generation service.",
+            "raw_response": response.get("answer"),
+            "full_response": response,
+        }
+    except Exception as e:
+        logger.error(
+            f"An unexpected error occurred while processing the agent response: {e}"
+        )
+        return {
+            "error": "An unexpected error occurred.",
+            "details": str(e),
         }

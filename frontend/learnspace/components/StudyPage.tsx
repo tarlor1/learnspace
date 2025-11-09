@@ -133,16 +133,46 @@ export default function StudyPage() {
 	}
 
 	if (isError && flatQuestions.length === 0) {
+		// Check if it's a "no documents" error
+		const errorMessage =
+			error instanceof Error ? error.message : "Failed to load questions";
+		const isNoDocuments =
+			errorMessage.includes("No documents found") ||
+			errorMessage.includes("404");
+
+		if (isNoDocuments) {
+			return (
+				<div className="max-w-2xl mx-auto px-4 w-full">
+					<div className="flex items-center justify-center min-h-[400px]">
+						<div className="text-center">
+							<div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+								<AlertCircle className="h-8 w-8 text-muted-foreground" />
+							</div>
+							<h3 className="text-xl font-semibold text-foreground mb-2">
+								No Documents Found
+							</h3>
+							<p className="text-muted-foreground mb-6 max-w-md mx-auto">
+								Upload your first document to start generating personalized
+								practice questions from your study materials.
+							</p>
+							<a
+								href="/upload"
+								className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background bg-primary text-primary-foreground hover:bg-primary/90 h-10 py-2 px-4"
+							>
+								Upload Document
+							</a>
+						</div>
+					</div>
+				</div>
+			);
+		}
+
 		return (
 			<div className="max-w-2xl mx-auto px-4 w-full">
 				<Alert variant="destructive" className="my-8">
 					<AlertCircle className="h-4 w-4" />
 					<AlertTitle>Error Loading Questions</AlertTitle>
-					<AlertDescription>
-						{error instanceof Error
-							? error.message
-							: "Failed to load questions"}
-					</AlertDescription>
+					<AlertDescription>{errorMessage}</AlertDescription>
 				</Alert>
 			</div>
 		);

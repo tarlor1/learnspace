@@ -20,7 +20,7 @@ from database.models.document import Document
 from database.models.chapter import Chapter
 
 # Load environment variables
-load_dotenv()
+load_dotenv("../.env")
 
 # Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

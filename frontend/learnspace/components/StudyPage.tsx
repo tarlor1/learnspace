@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useUser } from "@auth0/nextjs-auth0/client";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
 import ShortResponseCard from "@/components/cards/ShortResponseCard";
-import { Loader2, AlertCircle, Search } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
 interface Question {
 	id: string;
@@ -29,8 +27,6 @@ type QuestionsPage = {
 
 export default function StudyPage() {
 	const { user, isLoading: authLoading } = useUser();
-	const [topic, setTopic] = useState("");
-	const [submittedTopic, setSubmittedTopic] = useState("");
 	const observerRef = useRef<IntersectionObserver | null>(null);
 	const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -45,13 +41,15 @@ export default function StudyPage() {
 		return data.accessToken;
 	};
 
-	const fetchQuestions = async (topic: string, numQuestions: number): Promise<Question[]> => {
+	const fetchQuestions = async (numQuestions: number): Promise<Question[]> => {
 		const token = await getAccessToken();
+		console.log('🔍 Fetching questions:', { numQuestions, hasToken: !!token });
 		const response = await apiClient.post<GenerateQuestionsResponse>(
 			"/generate-questions",
-			{ topic, num_questions: numQuestions },
+			{ num_questions: numQuestions },  // No topic - will use random topics
 			{ headers: { Authorization: `Bearer ${token}` } }
 		);
+		console.log('✅ Questions received:', response.data);
 		return response.data.questions;
 	};
 
@@ -64,9 +62,9 @@ export default function StudyPage() {
 		isLoading,
 		isError,
 	} = useInfiniteQuery({
-		queryKey: ["study-questions", submittedTopic],
+		queryKey: ["study-questions"],
 		queryFn: async ({ pageParam = INITIAL_BATCH_SIZE }) => {
-			const questions = await fetchQuestions(submittedTopic, pageParam as number);
+			const questions = await fetchQuestions(pageParam as number);
 			return { questions, count: questions.length };
 		},
 		initialPageParam: INITIAL_BATCH_SIZE,
@@ -74,15 +72,8 @@ export default function StudyPage() {
 			if (!lastPage || lastPage.count < LOAD_MORE_BATCH_SIZE) return undefined;
 			return LOAD_MORE_BATCH_SIZE;
 		},
-		enabled: !!submittedTopic,
+		enabled: !!user,  // Auto-load when user is authenticated
 	});
-
-	const handleTopicSubmit = (e: React.FormEvent) => {
-		e.preventDefault();
-		if (topic.trim()) {
-			setSubmittedTopic(topic.trim());
-		}
-	};
 
 	useEffect(() => {
 		if (!loadMoreRef.current || !hasNextPage || isFetchingNextPage) return;
@@ -104,6 +95,17 @@ export default function StudyPage() {
 
 	const flatQuestions: Question[] = data?.pages.flatMap((page) => page.questions) || [];
 
+	console.log('📊 Study Page State:', {
+		authLoading,
+		user: !!user,
+		isLoading,
+		isError,
+		error: error?.message,
+		pagesCount: data?.pages?.length,
+		flatQuestionsCount: flatQuestions.length,
+		data
+	});
+
 	if (authLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
@@ -114,32 +116,6 @@ export default function StudyPage() {
 
 	if (!user) return null;
 
-	if (!submittedTopic) {
-		return (
-			<div className="max-w-2xl mx-auto px-4 w-full text-center py-20">
-				<h2 className="text-2xl font-bold text-foreground mb-4">
-					Study: Choose Your Topic
-				</h2>
-				<p className="text-muted-foreground mb-6">
-					Enter a topic to generate practice questions
-				</p>
-				<form onSubmit={handleTopicSubmit} className="flex gap-2 max-w-md mx-auto">
-					<Input
-						type="text"
-						value={topic}
-						onChange={(e) => setTopic(e.target.value)}
-						placeholder="e.g., 'Python programming' or 'World War II'"
-						className="flex-grow"
-					/>
-					<Button type="submit" disabled={!topic.trim()}>
-						<Search className="h-4 w-4 mr-2" />
-						Generate
-					</Button>
-				</form>
-			</div>
-		);
-	}
-
 	if (isLoading) {
 		return (
 			<div className="max-w-2xl mx-auto px-4 w-full">
@@ -147,7 +123,7 @@ export default function StudyPage() {
 					<div className="text-center">
 						<Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
 						<p className="text-muted-foreground">
-							Generating questions for &quot;{submittedTopic}&quot;...
+							Generating your practice questions...
 						</p>
 					</div>
 				</div>
@@ -165,9 +141,6 @@ export default function StudyPage() {
 						{error instanceof Error ? error.message : "Failed to load questions"}
 					</AlertDescription>
 				</Alert>
-				<Button onClick={() => setSubmittedTopic("")} variant="outline">
-					Try a different topic
-				</Button>
 			</div>
 		);
 	}
@@ -176,7 +149,7 @@ export default function StudyPage() {
 		<div className="max-w-2xl mx-auto px-4 w-full pb-20">
 			<div className="mb-6">
 				<h2 className="text-2xl font-bold text-foreground">
-					Study: {submittedTopic}
+					Practice Questions
 				</h2>
 				<p className="text-muted-foreground text-sm mt-1">
 					{flatQuestions.length} question{flatQuestions.length !== 1 ? "s" : ""} loaded
@@ -207,18 +180,12 @@ export default function StudyPage() {
 			{!hasNextPage && flatQuestions.length > 0 && (
 				<div className="text-center py-8">
 					<p className="text-muted-foreground">🎉 You&apos;ve reached the end!</p>
-					<Button onClick={() => setSubmittedTopic("")} variant="link" className="mt-2">
-						Try another topic
-					</Button>
 				</div>
 			)}
 
 			{!isLoading && !isError && flatQuestions.length === 0 && (
 				<div className="text-center py-12">
 					<p className="text-muted-foreground">No questions generated</p>
-					<Button onClick={() => setSubmittedTopic("")} variant="outline" className="mt-4">
-						Try another topic
-					</Button>
 				</div>
 			)}
 		</div>

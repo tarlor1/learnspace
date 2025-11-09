@@ -56,7 +56,10 @@ app.include_router(upload_router)
 async def generate_questions(
     request: GenerateQuestionsRequest, current_user: dict = Depends(get_current_user)
 ):
-    """Generate questions using NeuralSeek topic-based approach (requires Auth0 authentication)"""
+    """Generate questions using NeuralSeek (requires Auth0 authentication)
+    
+    If no topic is provided, questions will be generated with random topics from a predefined list.
+    """
     user_id = current_user.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
@@ -66,7 +69,7 @@ async def generate_questions(
 
     try:
         questions = await generate_questions_with_neuralseek(
-            topic=request.topic,
+            topic=request.topic,  # Can be None for random topics
             num_questions=request.num_questions,
         )
         for q in questions:

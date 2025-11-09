@@ -1,6 +1,7 @@
 import os
 import httpx
 import json
+import random
 from typing import Dict, Any, Optional, List
 import asyncio
 from dotenv import load_dotenv
@@ -13,6 +14,39 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- Predefined Topics for Random Selection ---
+TOPICS_LIST = [
+    "Python programming",
+    "JavaScript fundamentals",
+    "Machine Learning basics",
+    "Data Structures and Algorithms",
+    "Web Development",
+    "Database Design",
+    "Cloud Computing",
+    "Cybersecurity",
+    "DevOps practices",
+    "React framework",
+    "Node.js",
+    "API Design",
+    "Software Testing",
+    "Git and Version Control",
+    "Docker and Containers",
+    "Microservices Architecture",
+    "Artificial Intelligence",
+    "Computer Networks",
+    "Operating Systems",
+    "Object-Oriented Programming",
+    "Functional Programming",
+    "REST APIs",
+    "GraphQL",
+    "Agile Methodologies",
+    "System Design"
+]
+
+def get_random_topic() -> str:
+    """Select a random topic from the predefined list."""
+    return random.choice(TOPICS_LIST)
 
 # --- NeuralSeek API Configuration ---
 NEURALSEEK_API_URL = os.getenv("NEURALSEEK_API_URL")
@@ -194,19 +228,21 @@ async def _fetch_one_question(
 
 
 async def generate_questions_with_neuralseek(
-    topic: str, num_questions: int = 10
+    topic: Optional[str] = None, num_questions: int = 10
 ) -> List:
     """
-    Generate multiple questions for a given topic using NeuralSeek.
-    This is the old topic-based approach.
+    Generate multiple questions using NeuralSeek.
+    If no topic is provided, randomly selects a topic for each question.
 
     Args:
-        topic: The topic to generate questions about
+        topic: Optional topic to generate questions about. If None, uses random topics.
         num_questions: Number of questions to generate
 
     Returns:
         List of Question objects
     """
+    logger.info(f"🎯 Generating {num_questions} questions. Topic provided: {topic}")
+    
     # Get legacy config values
     NEURALSEEK_EMBED_CODE = os.getenv("NEURALSEEK_EMBED_CODE")
 
@@ -218,15 +254,21 @@ async def generate_questions_with_neuralseek(
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
-        tasks = [
-            _fetch_one_question(client, headers, topic)
-            for _ in range(max(1, num_questions))
-        ]
+        # Generate tasks with random topics if no topic specified
+        tasks = []
+        for _ in range(max(1, num_questions)):
+            question_topic = topic if topic else get_random_topic()
+            logger.info(f"   📚 Using topic: {question_topic}")
+            tasks.append(_fetch_one_question(client, headers, question_topic))
+        
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        from database.models.question import Question
-
+        # Filter out exceptions and return only Question objects
         questions = [res for res in results if isinstance(res, Question)]
+        
+        logger.info(f"✅ Successfully generated {len(questions)} questions")
+        for q in questions:
+            logger.info(f"   - {q.topic}: {q.question[:50]}...")
 
         return questions
 

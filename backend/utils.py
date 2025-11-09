@@ -211,7 +211,8 @@ async def generate_questions_with_neuralseek(
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NEURALSEEK_API_KEY}",
-        "embedcode": NEURALSEEK_EMBED_CODE or "",
+        "embedcode": NEURALSEEK_EMBED_CODE,
+        "apikey": NEURALSEEK_API_KEY,
     }
 
     async with httpx.AsyncClient(timeout=60) as client:

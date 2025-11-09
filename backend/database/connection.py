@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv("../.env")
 
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")

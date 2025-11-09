@@ -68,8 +68,8 @@ export default function StudyPage() {
 			return { questions, count: questions.length };
 		},
 		initialPageParam: INITIAL_BATCH_SIZE,
-		getNextPageParam: (lastPage) => {
-			if (!lastPage || lastPage.count < LOAD_MORE_BATCH_SIZE) return undefined;
+		getNextPageParam: () => {
+			// Always allow fetching more questions (infinite scrolling)
 			return LOAD_MORE_BATCH_SIZE;
 		},
 		enabled: !!user,  // Auto-load when user is authenticated
@@ -176,12 +176,6 @@ export default function StudyPage() {
 			)}
 
 			<div ref={loadMoreRef} className="h-10" />
-
-			{!hasNextPage && flatQuestions.length > 0 && (
-				<div className="text-center py-8">
-					<p className="text-muted-foreground">🎉 You&apos;ve reached the end!</p>
-				</div>
-			)}
 
 			{!isLoading && !isError && flatQuestions.length === 0 && (
 				<div className="text-center py-12">

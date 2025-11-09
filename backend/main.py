@@ -11,7 +11,7 @@ from models import (
 from auth import router as auth_router, get_current_user
 from routes.questions import router as questions_router
 from routes.upload import router as upload_router
-from utils import generate_questions_with_neuralseek, validate_answer_with_neuralseek
+from utils import validate_answer_with_neuralseek
 
 # In-memory store for user questions
 user_question_store = {}
@@ -56,10 +56,15 @@ app.include_router(upload_router)
 async def generate_questions(
     request: GenerateQuestionsRequest, current_user: dict = Depends(get_current_user)
 ):
-    """Generate questions using NeuralSeek (requires Auth0 authentication)
+    """Generate questions using NeuralSeek from user's documents (requires Auth0 authentication)
     
-    If no topic is provided, questions will be generated with random topics from a predefined list.
+    This endpoint now generates questions from the user's uploaded documents using
+    the topic_generator agent to identify topics and question_maker agent to generate questions.
     """
+    from database.connection import get_db
+    from database.models.document import Document
+    from utils import generate_questions_from_user_documents
+    
     user_id = current_user.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
@@ -68,18 +73,81 @@ async def generate_questions(
         user_question_store[user_id] = {"questions": {}}
 
     try:
-        questions = await generate_questions_with_neuralseek(
-            topic=request.topic,  # Can be None for random topics
-            num_questions=request.num_questions,
-        )
-        for q in questions:
-            user_question_store[user_id]["questions"][q.id] = q.dict()
-
-        return GenerateQuestionsResponse(
-            message="Questions generated successfully",
-            num_questions=len(questions),
-            questions=questions,
-        )
+        # Get database session
+        db = next(get_db())
+        
+        try:
+            # Fetch user's documents
+            user_documents = (
+                db.query(Document)
+                .filter(Document.owner_id == user_id, Document.status == "ready")
+                .all()
+            )
+            
+            if not user_documents:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No documents found. Please upload a document first."
+                )
+            
+            document_ids = [str(doc.id) for doc in user_documents]
+            
+            # Generate questions from user's documents
+            questions_data = await generate_questions_from_user_documents(
+                document_ids=document_ids,
+                num_questions=request.num_questions,
+            )
+            
+            if not questions_data:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to generate questions from your documents."
+                )
+            
+            # Convert to Question model format for response
+            from models import Question as QuestionModel
+            from uuid import uuid4
+            
+            questions = []
+            for q_data in questions_data:
+                if q_data.get("error"):
+                    continue
+                
+                q_id = str(uuid4())
+                topic = q_data.get("topic", "General")
+                content = q_data.get("content", q_data)
+                
+                # Extract question text from content
+                if isinstance(content, dict):
+                    question_text = content.get("question", content.get("text", str(content)))
+                else:
+                    question_text = str(content)
+                
+                question = QuestionModel(
+                    id=q_id,
+                    topic=topic,
+                    question=question_text
+                )
+                
+                questions.append(question)
+                user_question_store[user_id]["questions"][q_id] = {
+                    "id": q_id,
+                    "topic": topic,
+                    "question": question_text,
+                    "document_id": q_data.get("document_id"),
+                    "chapter_id": q_data.get("chapter_id"),
+                }
+            
+            return GenerateQuestionsResponse(
+                message="Questions generated successfully from your documents",
+                num_questions=len(questions),
+                questions=questions,
+            )
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating questions: {str(e)}"

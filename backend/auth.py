@@ -1,11 +1,15 @@
 import os
 from typing import Optional, Dict, Any
 from functools import lru_cache
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status, APIRouter
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
-from jwt.exceptions import ExpiredSignatureError, InvalidAudienceError, InvalidTokenError
+from jwt.exceptions import (
+    ExpiredSignatureError,
+    InvalidAudienceError,
+    InvalidTokenError,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,9 +26,16 @@ ALGORITHMS = ["RS256"]
 
 security = HTTPBearer()
 
+router = APIRouter(
+    prefix="/api/auth",
+    tags=["Authentication"],
+)
+
+
 @lru_cache(maxsize=1)
 def get_jwk_client() -> PyJWKClient:
     return PyJWKClient(JWKS_URL)
+
 
 def verify_token(token: str) -> Dict[str, Any]:
     """Verify RS256 Auth0 JWT using JWKS."""
@@ -49,13 +60,59 @@ def verify_token(token: str) -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Token verification failed: {e}")
 
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Dict[str, Any]:
+    """
+    FastAPI dependency to get current authenticated user
+
+    Args:
+        credentials: HTTP bearer token from request header
+
+    Returns:
+        User info from decoded token
+
+    Raises:
+        HTTPException: If authentication fails
+    """
     if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Authorization token missing")
-    
+
     token = credentials.credentials
     payload = verify_token(token)
     return payload
 
+
+async def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
+) -> Optional[dict]:
+    """
+    FastAPI dependency to get current user if authenticated, None otherwise
+    Useful for optional authentication on public endpoints
+
+    Args:
+        credentials: HTTP bearer token from request header (optional)
+
+    Returns:
+        User info from decoded token or None
+    """
+    if credentials is None:
+        return None
+
+    try:
+        token = credentials.credentials
+        payload = verify_token(token)
+        return payload
+    except HTTPException:
+        return None
+
+
+@router.get("/me", response_model=dict)
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """
+    Returns the profile of the currently authenticated user.
+    """
+    return current_user

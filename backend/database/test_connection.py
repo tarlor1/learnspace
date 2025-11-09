@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from dotenv import load_dotenv
 
-load_dotenv("../.env.local")
+load_dotenv()
 # --- 1. GET YOUR CONNECTION STRING ---
 # Put your Supabase connection string here
 # (The one that looks like: "postgresql://postgres:[YOUR-PASSWORD]@[YOUR-HOST]:5432/postgres")

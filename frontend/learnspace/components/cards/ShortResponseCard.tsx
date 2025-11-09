@@ -5,18 +5,18 @@ import { ThumbsUp, ThumbsDown } from "lucide-react"
 
 interface ShortResponseCardProps {
   id: string
-  chapter: string
+  topic: string
   question: string
 }
 
-export default function ShortResponseCard({ id, chapter, question }: ShortResponseCardProps) {
+export default function ShortResponseCard({ id, topic, question }: ShortResponseCardProps) {
   const [answer, setAnswer] = useState("")
   const [reaction, setReaction] = useState<"like" | "dislike" | null>(null)
 
   return (
     <div className="bg-card border border-border rounded-2xl shadow-sm hover:shadow-lg transition-shadow p-4 mb-4">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-xs font-semibold text-primary px-3 py-1 bg-primary/10 rounded-full">{chapter}</span>
+        <span className="text-xs font-semibold text-primary px-3 py-1 bg-primary/10 rounded-full">{topic}</span>
       </div>
 
       <p className="text-card-foreground font-medium text-base mb-4">{question}</p>

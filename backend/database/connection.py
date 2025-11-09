@@ -15,7 +15,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL", "")
 
 if not SUPABASE_DB_URL:
-    raise ValueError("SUPABASE_DB_URL must be set in .env.local")
+    raise ValueError("SUPABASE_DB_URL must be set in .env")
 
 # Create SQLAlchemy engine
 engine = create_engine(

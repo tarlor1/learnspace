@@ -10,7 +10,7 @@ load_dotenv("../.env")
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL", "")
 
 if SUPABASE_DB_URL == "":
-    raise ValueError("SUPABASE_DB_URL must be set in .env.local")
+    raise ValueError("SUPABASE_DB_URL must be set in .env")
 try:
     # --- 2. CREATE THE ENGINE ---
     # This is the same 'engine' your FastAPI app will use
